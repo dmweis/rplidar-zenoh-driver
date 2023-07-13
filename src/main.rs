@@ -76,11 +76,31 @@ async fn main() -> anyhow::Result<()> {
 
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
 
-    let publisher = zenoh_session
+    let laser_scan_publisher = zenoh_session
         .declare_publisher(args.topic)
         .res()
         .await
         .unwrap();
+
+    let point_cloud_publisher = zenoh_session
+        .declare_publisher("point_cloud")
+        .res()
+        .await
+        .unwrap();
+
+    let pose = foxglove::Pose {
+        position: Some(foxglove::Vector3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        }),
+        orientation: Some(foxglove::Quaternion {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            w: 0.0,
+        }),
+    };
 
     let scan_options = ScanOptions::with_mode(2);
     let _ = lidar.start_scan_with_options(&scan_options)?;
@@ -89,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(mut scan) => {
                 sort_scan(&mut scan)?;
 
-                let _projected_scan = scan
+                let projected_scan = scan
                     .iter()
                     .filter(|scan| scan.is_valid())
                     .map(|scan_point| {
@@ -104,27 +124,48 @@ async fn main() -> anyhow::Result<()> {
                 let laser_scan = foxglove::LaserScan {
                     timestamp: Some(system_time_to_proto_time(&now)),
                     frame_id: "lidar".to_string(),
-                    pose: Some(foxglove::Pose {
-                        position: Some(foxglove::Vector3 {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                        }),
-                        orientation: Some(foxglove::Quaternion {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                            w: 0.0,
-                        }),
-                    }),
+                    pose: Some(pose.clone()),
                     start_angle: 0.0,
                     end_angle: std::f64::consts::PI * 2.0,
                     ranges: scan.iter().map(|point| point.distance() as f64).collect(),
                     intensities: vec![],
                 };
 
-                publisher
+                let point_cloud = foxglove::PointCloud {
+                    timestamp: Some(system_time_to_proto_time(&now)),
+                    frame_id: "lidar".to_string(),
+                    pose: Some(pose.clone()),
+                    point_stride: 8,
+                    fields: vec![
+                        foxglove::PackedElementField {
+                            name: "x".to_string(),
+                            offset: 0,
+                            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
+                        },
+                        foxglove::PackedElementField {
+                            name: "y".to_string(),
+                            offset: 4,
+                            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
+                        },
+                    ],
+                    data: projected_scan
+                        .iter()
+                        .flat_map(|(x, y)| {
+                            let mut data = x.to_be_bytes().to_vec();
+                            data.extend(y.to_be_bytes());
+                            data
+                        })
+                        .collect(),
+                };
+
+                laser_scan_publisher
                     .put(laser_scan.encode_to_vec())
+                    .res()
+                    .await
+                    .unwrap();
+
+                point_cloud_publisher
+                    .put(point_cloud.encode_to_vec())
                     .res()
                     .await
                     .unwrap();

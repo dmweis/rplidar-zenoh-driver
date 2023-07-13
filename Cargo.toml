@@ -8,7 +8,7 @@ version = "0.1.0"
 
 [dependencies]
 rplidar_driver = {git = "https://github.com/dmweis/rplidar_driver", branch = "main"}
-tokio = {version = "1", features = ["macros", "rt-multi-thread", "fs", "sync"]}
+tokio = {version = "1", features = ["macros", "rt-multi-thread", "fs", "sync", "signal"]}
 zenoh = "0.7.2-rc"
 
 # protobuf
@@ -20,6 +20,10 @@ prost-types = "0.11.9"
 # utilities
 anyhow = "1.0"
 clap = {version = "4.2", features = ["derive"]}
+
+# mcap
+mcap = "0.6.0"
+memmap2 = "0.7.1"
 
 # logging
 tracing = {version = "0.1", features = ["log"]}
