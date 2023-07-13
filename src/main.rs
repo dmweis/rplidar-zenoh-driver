@@ -151,8 +151,8 @@ async fn main() -> anyhow::Result<()> {
                     data: projected_scan
                         .iter()
                         .flat_map(|(x, y)| {
-                            let mut data = x.to_be_bytes().to_vec();
-                            data.extend(y.to_be_bytes());
+                            let mut data = x.to_le_bytes().to_vec();
+                            data.extend(y.to_le_bytes());
                             data
                         })
                         .collect(),

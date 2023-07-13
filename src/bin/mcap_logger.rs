@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
     let laser_scan_channel_id =
         create_topic_for_message(&laser_scan_message, &mut out, "laser_scan")?;
 
-    let point_cloud_message = foxglove::LaserScan::default();
+    let point_cloud_message = foxglove::PointCloud::default();
     let point_cloud_channel_id =
         create_topic_for_message(&point_cloud_message, &mut out, "point_cloud")?;
 
