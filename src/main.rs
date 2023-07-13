@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let mut zenoh_config = Config::default();
-    if args.listen.is_empty() {
+    if !args.listen.is_empty() {
         zenoh_config.listen.endpoints = args
             .listen
             .iter()
@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
             .collect();
     }
 
-    if args.connect.is_empty() {
+    if !args.connect.is_empty() {
         zenoh_config.connect.endpoints = args
             .connect
             .iter()
