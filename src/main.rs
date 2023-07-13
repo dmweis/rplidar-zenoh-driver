@@ -49,12 +49,6 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    lidar.core_reset()?;
-
-    let scan_options = ScanOptions::with_mode(2);
-    let resp = lidar.start_scan_with_options(&scan_options)?;
-    println!("Start scan: {:?}", resp);
-
     let zenoh_session = zenoh::open(Config::default()).res().await.unwrap();
 
     let publisher = zenoh_session
@@ -63,6 +57,8 @@ async fn main() -> anyhow::Result<()> {
         .await
         .unwrap();
 
+    let scan_options = ScanOptions::with_mode(2);
+    let _ = lidar.start_scan_with_options(&scan_options)?;
     loop {
         match lidar.grab_scan() {
             Ok(mut scan) => {
