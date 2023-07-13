@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use mcap::records::system_time_to_nanos;
 use once_cell::sync::Lazy;
@@ -98,15 +97,13 @@ async fn main() -> anyhow::Result<()> {
         .descriptor()
         .parent_pool()
         .encode_to_vec();
-    let laser_scan_schema_encoded: String =
-        general_purpose::STANDARD_NO_PAD.encode(laser_scan_schema_data);
     let laser_scan_channel = server
-        .publish(
-            args.scan_topic.clone(),
-            PROTOBUF_ENCODING.to_string(),
-            laser_scan_message.descriptor().full_name().to_owned(),
-            laser_scan_schema_encoded,
-            PROTOBUF_ENCODING.to_string(),
+        .create_publisher(
+            &args.scan_topic,
+            PROTOBUF_ENCODING,
+            laser_scan_message.descriptor().full_name(),
+            laser_scan_schema_data,
+            Some(PROTOBUF_ENCODING),
             false,
         )
         .await?;
@@ -116,15 +113,13 @@ async fn main() -> anyhow::Result<()> {
         .descriptor()
         .parent_pool()
         .encode_to_vec();
-    let point_cloud_schema_encoded: String =
-        general_purpose::STANDARD_NO_PAD.encode(point_cloud_schema_data);
     let point_cloud_channel = server
-        .publish(
-            args.cloud_topic.clone(),
-            PROTOBUF_ENCODING.to_string(),
-            point_cloud_message.descriptor().full_name().to_owned(),
-            point_cloud_schema_encoded,
-            PROTOBUF_ENCODING.to_string(),
+        .create_publisher(
+            &args.cloud_topic,
+            PROTOBUF_ENCODING,
+            point_cloud_message.descriptor().full_name(),
+            point_cloud_schema_data,
+            Some(PROTOBUF_ENCODING),
             false,
         )
         .await?;
