@@ -34,6 +34,11 @@ tracing-subscriber = {version = "0.3", features = [
   "json",
 ]}
 
+# foxglove bridge
+base64 = "0.21.2"
+foxglove-ws = {git = "https://github.com/dmweis/foxglove-ws.git", branch = "main"}
+# foxglove-ws = {path = "../foxglove-ws"}
+
 [build-dependencies]
 prost-build = "0.11.9"
 prost-reflect-build = "0.11.0"
