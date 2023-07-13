@@ -7,7 +7,10 @@ use once_cell::sync::Lazy;
 use prost_reflect::{DescriptorPool, ReflectMessage};
 use std::{borrow::Cow, collections::BTreeMap, fs, io::BufWriter, sync::Arc, time::SystemTime};
 use tokio::{select, signal};
+use tracing::info;
 use zenoh::{config::Config, prelude::r#async::*};
+
+use rplidar_zenoh_driver::setup_tracing;
 
 static FILE_DESCRIPTOR_SET: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/file_descriptor_set.bin"));
@@ -50,7 +53,9 @@ const PROTOBUF_ENCODING: &str = "protobuf";
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
+    setup_tracing()?;
 
+    info!(file = ?args.output, "Creating mcap output file");
     let mut out = Writer::new(BufWriter::new(fs::File::create(&args.output)?))?;
 
     let mut zenoh_config = Config::default();
@@ -60,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
             .iter()
             .map(|endpoint| endpoint.parse().unwrap())
             .collect();
+        info!(listen_endpoints= ?zenoh_config.listen.endpoints, "Configured listening endpoints");
     }
 
     if !args.connect.is_empty() {
@@ -68,9 +74,11 @@ async fn main() -> anyhow::Result<()> {
             .iter()
             .map(|endpoint| endpoint.parse().unwrap())
             .collect();
+        info!(connect_endpoints= ?zenoh_config.connect.endpoints, "Configured connect endpoints");
     }
 
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
+    info!("Started zenoh session");
 
     let laser_scan_subscriber = zenoh_session
         .declare_subscriber(&args.scan_topic)
@@ -111,6 +119,9 @@ async fn main() -> anyhow::Result<()> {
                     },
                     &payload,
                 )?;
+                if laser_scan_counter % 20 == 0 {
+                    info!("laser_scan_counter: {}", laser_scan_counter);
+                }
             },
 
             sample = point_cloud_subscriber.recv_async() => {
@@ -128,16 +139,19 @@ async fn main() -> anyhow::Result<()> {
                     },
                     &payload,
                 )?;
+                if point_cloud_counter % 20 == 0 {
+                    info!("point_cloud_counter: {}", point_cloud_counter);
+                }
             },
             _ = signal::ctrl_c() => {
-                println!("ctrl-c received, exiting");
+                info!("ctrl-c received, exiting");
                 break;
             }
         );
     }
 
     out.finish()?;
-    println!("mcap file closed");
+    info!("mcap file closed");
 
     Ok(())
 }

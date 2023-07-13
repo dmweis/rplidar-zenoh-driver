@@ -5,7 +5,10 @@ use prost_reflect::DescriptorPool;
 use prost_types::Timestamp;
 use rplidar_driver::{utils::sort_scan, RplidarDevice, RposError, ScanOptions};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::info;
 use zenoh::{config::Config, prelude::r#async::*};
+
+use rplidar_zenoh_driver::setup_tracing;
 
 static FILE_DESCRIPTOR_SET: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/file_descriptor_set.bin"));
@@ -54,12 +57,13 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
+    setup_tracing()?;
 
     let mut lidar = RplidarDevice::open_port(&args.serial_port)?;
 
     if args.lidar_off {
         lidar.stop_motor()?;
-        println!("Lidar paused.");
+        info!("Lidar paused.");
         wait_for_enter()?;
         return Ok(());
     }
@@ -109,12 +113,39 @@ async fn main() -> anyhow::Result<()> {
         }),
     };
 
+    let point_stride = 4 + 4 + 1;
+    let point_cloud_fields = vec![
+        foxglove::PackedElementField {
+            name: "x".to_string(),
+            offset: 0,
+            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
+        },
+        foxglove::PackedElementField {
+            name: "y".to_string(),
+            offset: 4,
+            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
+        },
+        foxglove::PackedElementField {
+            name: "quality".to_string(),
+            offset: 8,
+            r#type: foxglove::packed_element_field::NumericType::Uint8 as i32,
+        },
+    ];
+
     let scan_options = ScanOptions::with_mode(2);
     let _ = lidar.start_scan_with_options(&scan_options)?;
+
+    let mut scan_counter = 0;
     loop {
         match lidar.grab_scan() {
             Ok(mut scan) => {
                 let capture_time = SystemTime::now();
+                scan_counter += 1;
+
+                if scan_counter % 80 == 0 {
+                    info!("Scan counter: {}", scan_counter);
+                }
+
                 sort_scan(&mut scan)?;
 
                 let start_angle = scan.get(0).map(|point| point.angle()).unwrap_or_default();
@@ -157,25 +188,8 @@ async fn main() -> anyhow::Result<()> {
                     timestamp: Some(system_time_to_proto_time(&capture_time)),
                     frame_id: args.frame_id.clone(),
                     pose: Some(pose.clone()),
-                    // bytes per point
-                    point_stride: 12,
-                    fields: vec![
-                        foxglove::PackedElementField {
-                            name: "x".to_string(),
-                            offset: 0,
-                            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
-                        },
-                        foxglove::PackedElementField {
-                            name: "y".to_string(),
-                            offset: 4,
-                            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
-                        },
-                        foxglove::PackedElementField {
-                            name: "quality".to_string(),
-                            offset: 8,
-                            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
-                        },
-                    ],
+                    point_stride,
+                    fields: point_cloud_fields.clone(),
                     data: projected_scan
                         .iter()
                         .flat_map(|(x, y, quality)| {
@@ -196,7 +210,7 @@ async fn main() -> anyhow::Result<()> {
             }
             Err(err) => match err {
                 RposError::OperationTimeout => continue,
-                _ => println!("Error: {:?}", err),
+                _ => info!("Error: {:?}", err),
             },
         }
     }
@@ -204,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
 
 fn wait_for_enter() -> anyhow::Result<()> {
     use std::io::Read;
-    println!("Press Enter to continue...");
+    info!("Press Enter to continue...");
     let _ = std::io::stdin().read(&mut [0])?;
     Ok(())
 }
