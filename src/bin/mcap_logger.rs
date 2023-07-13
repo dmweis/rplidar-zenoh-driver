@@ -4,21 +4,10 @@ use mcap::{
     Channel, Schema, Writer,
 };
 use once_cell::sync::Lazy;
-use prost_reflect::DescriptorPool;
-use prost_reflect::ReflectMessage;
-use prost_types::Timestamp;
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    fs,
-    io::BufWriter,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
-use tokio::select;
-use tokio::signal;
-use zenoh::config::Config;
-use zenoh::prelude::r#async::*;
+use prost_reflect::{DescriptorPool, ReflectMessage};
+use std::{borrow::Cow, collections::BTreeMap, fs, io::BufWriter, sync::Arc, time::SystemTime};
+use tokio::{select, signal};
+use zenoh::{config::Config, prelude::r#async::*};
 
 static FILE_DESCRIPTOR_SET: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/file_descriptor_set.bin"));
@@ -32,21 +21,20 @@ pub mod foxglove {
     include!(concat!(env!("OUT_DIR"), "/foxglove.rs"));
 }
 
-#[allow(dead_code)]
-fn system_time_to_proto_time(time: &SystemTime) -> Timestamp {
-    let duration = time.duration_since(UNIX_EPOCH).unwrap();
-    Timestamp {
-        seconds: duration.as_secs() as i64,
-        nanos: duration.subsec_nanos() as i32,
-    }
-}
-
 #[derive(Parser, Debug)]
 #[command()]
 struct Args {
     /// publish topic
     #[clap(long, default_value = "laser_scan")]
-    topic: String,
+    scan_topic: String,
+
+    /// publish topic
+    #[clap(long, default_value = "point_cloud")]
+    cloud_topic: String,
+
+    /// output file
+    #[clap(long, default_value = "out.mcap")]
+    output: String,
 
     /// listen on
     #[clap(long)]
@@ -57,35 +45,13 @@ struct Args {
     connect: Vec<String>,
 }
 
-fn create_topic_for_message(
-    message: &dyn ReflectMessage,
-    out: &mut Writer<BufWriter<fs::File>>,
-    topic: &str,
-) -> anyhow::Result<u16> {
-    let schema = Some(Arc::new(Schema {
-        name: message.descriptor().full_name().to_owned(),
-        encoding: String::from("protobuf"),
-        // this includes all files
-        // filter to only include relevant
-        // https://mcap.dev/guides/cpp/protobuf#register-schema
-        data: Cow::from(message.descriptor().parent_pool().encode_to_vec()),
-    }));
-
-    let my_channel = Channel {
-        topic: String::from(topic),
-        schema,
-        message_encoding: String::from("protobuf"),
-        metadata: BTreeMap::default(),
-    };
-
-    Ok(out.add_channel(&my_channel)?)
-}
+const PROTOBUF_ENCODING: &str = "protobuf";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
 
-    let mut out = Writer::new(BufWriter::new(fs::File::create("out.mcap")?))?;
+    let mut out = Writer::new(BufWriter::new(fs::File::create(&args.output)?))?;
 
     let mut zenoh_config = Config::default();
     if !args.listen.is_empty() {
@@ -107,24 +73,24 @@ async fn main() -> anyhow::Result<()> {
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
 
     let laser_scan_subscriber = zenoh_session
-        .declare_subscriber(&args.topic)
+        .declare_subscriber(&args.scan_topic)
         .res()
         .await
         .unwrap();
 
     let point_cloud_subscriber = zenoh_session
-        .declare_subscriber("point_cloud")
+        .declare_subscriber(&args.cloud_topic)
         .res()
         .await
         .unwrap();
 
     let laser_scan_message = foxglove::LaserScan::default();
     let laser_scan_channel_id =
-        create_topic_for_message(&laser_scan_message, &mut out, "laser_scan")?;
+        register_mcap_topic_for_protobuf(&laser_scan_message, &mut out, &args.scan_topic)?;
 
     let point_cloud_message = foxglove::PointCloud::default();
     let point_cloud_channel_id =
-        create_topic_for_message(&point_cloud_message, &mut out, "point_cloud")?;
+        register_mcap_topic_for_protobuf(&point_cloud_message, &mut out, &args.cloud_topic)?;
 
     let mut laser_scan_counter = 0;
     let mut point_cloud_counter = 0;
@@ -132,14 +98,10 @@ async fn main() -> anyhow::Result<()> {
         select!(
             sample = laser_scan_subscriber.recv_async() => {
                 let sample = sample.unwrap();
-
                 laser_scan_counter+= 1;
-
                 let now = SystemTime::now();
                 let time_nanos = system_time_to_nanos(&now);
-
                 let payload: Vec<u8> = sample.value.try_into()?;
-
                 out.write_to_known_channel(
                     &MessageHeader {
                         channel_id: laser_scan_channel_id,
@@ -153,14 +115,10 @@ async fn main() -> anyhow::Result<()> {
 
             sample = point_cloud_subscriber.recv_async() => {
                 let sample = sample.unwrap();
-
                 point_cloud_counter+= 1;
-
                 let now = SystemTime::now();
                 let time_nanos = system_time_to_nanos(&now);
-
                 let payload: Vec<u8> = sample.value.try_into()?;
-
                 out.write_to_known_channel(
                     &MessageHeader {
                         channel_id: point_cloud_channel_id,
@@ -171,14 +129,39 @@ async fn main() -> anyhow::Result<()> {
                     &payload,
                 )?;
             },
-
             _ = signal::ctrl_c() => {
+                println!("ctrl-c received, exiting");
                 break;
             }
         );
     }
 
     out.finish()?;
+    println!("mcap file closed");
 
     Ok(())
+}
+
+fn register_mcap_topic_for_protobuf(
+    protobuf: &dyn ReflectMessage,
+    mcap_writer: &mut Writer<BufWriter<fs::File>>,
+    topic: &str,
+) -> anyhow::Result<u16> {
+    let schema = Some(Arc::new(Schema {
+        name: protobuf.descriptor().full_name().to_owned(),
+        encoding: PROTOBUF_ENCODING.to_owned(),
+        // this includes all files
+        // filter to only include relevant
+        // https://mcap.dev/guides/cpp/protobuf#register-schema
+        data: Cow::from(protobuf.descriptor().parent_pool().encode_to_vec()),
+    }));
+
+    let my_channel = Channel {
+        topic: String::from(topic),
+        schema,
+        message_encoding: PROTOBUF_ENCODING.to_owned(),
+        metadata: BTreeMap::default(),
+    };
+
+    Ok(mcap_writer.add_channel(&my_channel)?)
 }

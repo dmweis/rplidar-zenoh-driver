@@ -5,8 +5,7 @@ use prost_reflect::DescriptorPool;
 use prost_types::Timestamp;
 use rplidar_driver::{utils::sort_scan, RplidarDevice, RposError, ScanOptions};
 use std::time::{SystemTime, UNIX_EPOCH};
-use zenoh::config::Config;
-use zenoh::prelude::r#async::*;
+use zenoh::{config::Config, prelude::r#async::*};
 
 static FILE_DESCRIPTOR_SET: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/file_descriptor_set.bin"));
@@ -23,17 +22,25 @@ pub mod foxglove {
 #[derive(Parser, Debug)]
 #[command()]
 struct Args {
-    /// Turn on lidar
+    /// Turn of lidar
     #[clap(long)]
-    lidar_on: bool,
+    lidar_off: bool,
 
     /// serial port for lidar
     #[clap(long)]
-    port: String,
+    serial_port: String,
 
     /// publish topic
     #[clap(long, default_value = "laser_scan")]
-    topic: String,
+    scan_topic: String,
+
+    /// publish topic
+    #[clap(long, default_value = "point_cloud")]
+    cloud_topic: String,
+
+    /// frame_id
+    #[clap(long, default_value = "lidar")]
+    frame_id: String,
 
     /// listen on
     #[clap(long)]
@@ -48,9 +55,9 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
 
-    let mut lidar = RplidarDevice::open_port(&args.port)?;
+    let mut lidar = RplidarDevice::open_port(&args.serial_port)?;
 
-    if !args.lidar_on {
+    if args.lidar_off {
         lidar.stop_motor()?;
         println!("Lidar paused.");
         wait_for_enter()?;
@@ -77,13 +84,13 @@ async fn main() -> anyhow::Result<()> {
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
 
     let laser_scan_publisher = zenoh_session
-        .declare_publisher(args.topic)
+        .declare_publisher(args.scan_topic)
         .res()
         .await
         .unwrap();
 
     let point_cloud_publisher = zenoh_session
-        .declare_publisher("point_cloud")
+        .declare_publisher(args.cloud_topic)
         .res()
         .await
         .unwrap();
@@ -107,35 +114,51 @@ async fn main() -> anyhow::Result<()> {
     loop {
         match lidar.grab_scan() {
             Ok(mut scan) => {
+                let capture_time = SystemTime::now();
                 sort_scan(&mut scan)?;
 
+                let start_angle = scan.get(0).map(|point| point.angle()).unwrap_or_default();
+                let end_angle = scan
+                    .iter()
+                    .last()
+                    .map(|point| point.angle())
+                    .unwrap_or_default();
+
+                // laser scan
+                let laser_scan = foxglove::LaserScan {
+                    timestamp: Some(system_time_to_proto_time(&capture_time)),
+                    frame_id: args.frame_id.clone(),
+                    pose: Some(pose.clone()),
+                    start_angle: start_angle as f64,
+                    end_angle: end_angle as f64,
+                    ranges: scan.iter().map(|point| point.distance() as f64).collect(),
+                    intensities: scan.iter().map(|point| point.quality as f64).collect(),
+                };
+
+                laser_scan_publisher
+                    .put(laser_scan.encode_to_vec())
+                    .res()
+                    .await
+                    .unwrap();
+
+                // point cloud
                 let projected_scan = scan
                     .iter()
                     .filter(|scan| scan.is_valid())
                     .map(|scan_point| {
                         let x = scan_point.distance() * (-scan_point.angle()).cos();
                         let y = scan_point.distance() * (-scan_point.angle()).sin();
-                        (x, y)
+                        let quality = scan_point.quality;
+                        (x, y, quality)
                     })
                     .collect::<Vec<_>>();
 
-                let now = SystemTime::now();
-
-                let laser_scan = foxglove::LaserScan {
-                    timestamp: Some(system_time_to_proto_time(&now)),
-                    frame_id: "lidar".to_string(),
-                    pose: Some(pose.clone()),
-                    start_angle: 0.0,
-                    end_angle: std::f64::consts::PI * 2.0,
-                    ranges: scan.iter().map(|point| point.distance() as f64).collect(),
-                    intensities: vec![],
-                };
-
                 let point_cloud = foxglove::PointCloud {
-                    timestamp: Some(system_time_to_proto_time(&now)),
-                    frame_id: "lidar".to_string(),
+                    timestamp: Some(system_time_to_proto_time(&capture_time)),
+                    frame_id: args.frame_id.clone(),
                     pose: Some(pose.clone()),
-                    point_stride: 8,
+                    // bytes per point
+                    point_stride: 12,
                     fields: vec![
                         foxglove::PackedElementField {
                             name: "x".to_string(),
@@ -147,22 +170,23 @@ async fn main() -> anyhow::Result<()> {
                             offset: 4,
                             r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
                         },
+                        foxglove::PackedElementField {
+                            name: "quality".to_string(),
+                            offset: 8,
+                            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
+                        },
                     ],
                     data: projected_scan
                         .iter()
-                        .flat_map(|(x, y)| {
+                        .flat_map(|(x, y, quality)| {
+                            // foxglove data is low endian
                             let mut data = x.to_le_bytes().to_vec();
                             data.extend(y.to_le_bytes());
+                            data.extend(quality.to_le_bytes());
                             data
                         })
                         .collect(),
                 };
-
-                laser_scan_publisher
-                    .put(laser_scan.encode_to_vec())
-                    .res()
-                    .await
-                    .unwrap();
 
                 point_cloud_publisher
                     .put(point_cloud.encode_to_vec())
