@@ -32,7 +32,7 @@ struct Args {
     port: String,
 
     /// publish topic
-    #[clap(long, default_value = "String::from(\"laser_scan\")")]
+    #[clap(long, default_value = "laser_scan")]
     topic: String,
 }
 
