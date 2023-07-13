@@ -1,0 +1,35 @@
+[package]
+authors = ["David Michael Weis <dweis7@gmail.com>"]
+edition = "2021"
+license = "MIT OR APACHE"
+name = "rplidar-zenoh-driver"
+publish = false
+version = "0.1.0"
+
+[dependencies]
+rplidar_driver = {git = "https://github.com/dmweis/rplidar_driver", branch = "main"}
+tokio = {version = "1", features = ["macros", "rt-multi-thread", "fs", "sync"]}
+zenoh = "0.7.2-rc"
+
+# protobuf
+once_cell = "1.17.0"
+prost = "0.11.9"
+prost-reflect = {version = "0.11.4", features = ["derive"]}
+prost-types = "0.11.9"
+
+# utilities
+anyhow = "1.0"
+clap = {version = "4.2", features = ["derive"]}
+
+# logging
+tracing = {version = "0.1", features = ["log"]}
+tracing-logfmt = "0.3"
+tracing-subscriber = {version = "0.3", features = [
+  "registry",
+  "env-filter",
+  "json",
+]}
+
+[build-dependencies]
+prost-build = "0.11.9"
+prost-reflect-build = "0.11.0"
