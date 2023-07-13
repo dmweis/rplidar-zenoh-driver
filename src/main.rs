@@ -34,6 +34,14 @@ struct Args {
     /// publish topic
     #[clap(long, default_value = "laser_scan")]
     topic: String,
+
+    /// listen on
+    #[clap(long)]
+    listen: Vec<String>,
+
+    /// connect to
+    #[clap(long)]
+    connect: Vec<String>,
 }
 
 #[tokio::main]
@@ -49,7 +57,24 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let zenoh_session = zenoh::open(Config::default()).res().await.unwrap();
+    let mut zenoh_config = Config::default();
+    if args.listen.is_empty() {
+        zenoh_config.listen.endpoints = args
+            .listen
+            .iter()
+            .map(|endpoint| endpoint.parse().unwrap())
+            .collect();
+    }
+
+    if args.connect.is_empty() {
+        zenoh_config.connect.endpoints = args
+            .connect
+            .iter()
+            .map(|endpoint| endpoint.parse().unwrap())
+            .collect();
+    }
+
+    let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
 
     let publisher = zenoh_session
         .declare_publisher(args.topic)
