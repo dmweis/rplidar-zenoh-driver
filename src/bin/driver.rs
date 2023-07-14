@@ -270,7 +270,8 @@ fn lidar_loop(
     should_lidar_run: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let mut lidar = RplidarDevice::open_port(port)?;
-    let mut lidar_running = false;
+    // start with this flag opposite of desired so that we set the lidar to correct start
+    let mut lidar_running = !should_lidar_run.load(Ordering::Relaxed);
     loop {
         match should_lidar_run.load(Ordering::Relaxed) {
             true => {
