@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
     setup_tracing()?;
 
-    let (mut scan_receiver, _should_lidar_run) =
+    let (mut scan_receiver, should_lidar_run) =
         start_lidar_driver(&args.serial_port, !args.lidar_off)?;
 
     let mut zenoh_config = Config::default();
@@ -87,7 +87,13 @@ async fn main() -> anyhow::Result<()> {
             .collect();
     }
 
-    let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
+    let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap().into_arc();
+
+    let subscriber = zenoh_session
+        .declare_subscriber("lidar_state")
+        .res()
+        .await
+        .unwrap();
 
     let laser_scan_publisher = zenoh_session
         .declare_publisher(args.scan_topic)
@@ -133,6 +139,23 @@ async fn main() -> anyhow::Result<()> {
             r#type: foxglove::packed_element_field::NumericType::Uint8 as i32,
         },
     ];
+
+    tokio::spawn(async move {
+        loop {
+            if let Ok(sample) = subscriber.recv_async().await {
+                info!("Received message: {}", sample);
+                let message: String = sample.value.try_into().unwrap();
+                let lidar_command_on = message.is_empty();
+                if lidar_command_on {
+                    info!("Starting scan");
+                    should_lidar_run.store(true, Ordering::Relaxed);
+                } else {
+                    info!("Stopping scan");
+                    should_lidar_run.store(false, Ordering::Relaxed);
+                }
+            }
+        }
+    });
 
     let mut scan_counter = 0;
     while let Some(mut scan) = scan_receiver.recv().await {
