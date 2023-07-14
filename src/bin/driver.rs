@@ -3,8 +3,16 @@ use once_cell::sync::Lazy;
 use prost::Message;
 use prost_reflect::DescriptorPool;
 use prost_types::Timestamp;
-use rplidar_driver::{utils::sort_scan, RplidarDevice, RposError, ScanOptions};
-use std::time::{SystemTime, UNIX_EPOCH};
+use rplidar_driver::{utils::sort_scan, RplidarDevice, RposError, ScanOptions, ScanPoint};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::sync::mpsc::{channel, Receiver};
 use tracing::info;
 use zenoh::{config::Config, prelude::r#async::*};
 
@@ -59,14 +67,8 @@ async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
     setup_tracing()?;
 
-    let mut lidar = RplidarDevice::open_port(&args.serial_port)?;
-
-    if args.lidar_off {
-        lidar.stop_motor()?;
-        info!("Lidar paused.");
-        wait_for_enter()?;
-        return Ok(());
-    }
+    let (mut scan_receiver, _should_lidar_run) =
+        start_lidar_driver(&args.serial_port, !args.lidar_off)?;
 
     let mut zenoh_config = Config::default();
     if !args.listen.is_empty() {
@@ -132,94 +134,78 @@ async fn main() -> anyhow::Result<()> {
         },
     ];
 
-    let scan_options = ScanOptions::with_mode(2);
-    let _ = lidar.start_scan_with_options(&scan_options)?;
-
     let mut scan_counter = 0;
-    loop {
-        match lidar.grab_scan() {
-            Ok(mut scan) => {
-                let capture_time = SystemTime::now();
-                scan_counter += 1;
+    while let Some(mut scan) = scan_receiver.recv().await {
+        let capture_time = SystemTime::now();
+        scan_counter += 1;
 
-                if scan_counter % 80 == 0 {
-                    info!("Scan counter: {}", scan_counter);
-                }
-
-                sort_scan(&mut scan)?;
-
-                let start_angle = scan.get(0).map(|point| point.angle()).unwrap_or_default();
-                let end_angle = scan
-                    .iter()
-                    .last()
-                    .map(|point| point.angle())
-                    .unwrap_or_default();
-
-                // laser scan
-                let laser_scan = foxglove::LaserScan {
-                    timestamp: Some(system_time_to_proto_time(&capture_time)),
-                    frame_id: args.frame_id.clone(),
-                    pose: Some(pose.clone()),
-                    start_angle: start_angle as f64,
-                    end_angle: end_angle as f64,
-                    ranges: scan.iter().map(|point| point.distance() as f64).collect(),
-                    intensities: scan.iter().map(|point| point.quality as f64).collect(),
-                };
-
-                laser_scan_publisher
-                    .put(laser_scan.encode_to_vec())
-                    .res()
-                    .await
-                    .unwrap();
-
-                // point cloud
-                let projected_scan = scan
-                    .iter()
-                    .filter(|scan| scan.is_valid())
-                    .map(|scan_point| {
-                        let x = scan_point.distance() * (-scan_point.angle()).cos();
-                        let y = scan_point.distance() * (-scan_point.angle()).sin();
-                        let quality = scan_point.quality;
-                        (x, y, quality)
-                    })
-                    .collect::<Vec<_>>();
-
-                let point_cloud = foxglove::PointCloud {
-                    timestamp: Some(system_time_to_proto_time(&capture_time)),
-                    frame_id: args.frame_id.clone(),
-                    pose: Some(pose.clone()),
-                    point_stride,
-                    fields: point_cloud_fields.clone(),
-                    data: projected_scan
-                        .iter()
-                        .flat_map(|(x, y, quality)| {
-                            // foxglove data is low endian
-                            let mut data = x.to_le_bytes().to_vec();
-                            data.extend(y.to_le_bytes());
-                            data.extend(quality.to_le_bytes());
-                            data
-                        })
-                        .collect(),
-                };
-
-                point_cloud_publisher
-                    .put(point_cloud.encode_to_vec())
-                    .res()
-                    .await
-                    .unwrap();
-            }
-            Err(err) => match err {
-                RposError::OperationTimeout => continue,
-                _ => info!("Error: {:?}", err),
-            },
+        if scan_counter % 80 == 0 {
+            info!("Scan counter: {}", scan_counter);
         }
-    }
-}
 
-fn wait_for_enter() -> anyhow::Result<()> {
-    use std::io::Read;
-    info!("Press Enter to continue...");
-    let _ = std::io::stdin().read(&mut [0])?;
+        sort_scan(&mut scan)?;
+
+        let start_angle = scan.get(0).map(|point| point.angle()).unwrap_or_default();
+        let end_angle = scan
+            .iter()
+            .last()
+            .map(|point| point.angle())
+            .unwrap_or_default();
+
+        // laser scan
+        let laser_scan = foxglove::LaserScan {
+            timestamp: Some(system_time_to_proto_time(&capture_time)),
+            frame_id: args.frame_id.clone(),
+            pose: Some(pose.clone()),
+            start_angle: start_angle as f64,
+            end_angle: end_angle as f64,
+            ranges: scan.iter().map(|point| point.distance() as f64).collect(),
+            intensities: scan.iter().map(|point| point.quality as f64).collect(),
+        };
+
+        laser_scan_publisher
+            .put(laser_scan.encode_to_vec())
+            .res()
+            .await
+            .unwrap();
+
+        // point cloud
+        let projected_scan = scan
+            .iter()
+            .filter(|scan| scan.is_valid())
+            .map(|scan_point| {
+                let x = scan_point.distance() * (-scan_point.angle()).cos();
+                let y = scan_point.distance() * (-scan_point.angle()).sin();
+                let quality = scan_point.quality;
+                (x, y, quality)
+            })
+            .collect::<Vec<_>>();
+
+        let point_cloud = foxglove::PointCloud {
+            timestamp: Some(system_time_to_proto_time(&capture_time)),
+            frame_id: args.frame_id.clone(),
+            pose: Some(pose.clone()),
+            point_stride,
+            fields: point_cloud_fields.clone(),
+            data: projected_scan
+                .iter()
+                .flat_map(|(x, y, quality)| {
+                    // foxglove data is low endian
+                    let mut data = x.to_le_bytes().to_vec();
+                    data.extend(y.to_le_bytes());
+                    data.extend(quality.to_le_bytes());
+                    data
+                })
+                .collect(),
+        };
+
+        point_cloud_publisher
+            .put(point_cloud.encode_to_vec())
+            .res()
+            .await
+            .unwrap();
+    }
+
     Ok(())
 }
 
@@ -231,4 +217,53 @@ fn system_time_to_proto_time(time: &SystemTime) -> Timestamp {
         seconds: duration.as_secs() as i64,
         nanos: duration.subsec_nanos() as i32,
     }
+}
+
+fn start_lidar_driver(
+    port: &str,
+    start_with_lidar_running: bool,
+) -> anyhow::Result<(Receiver<Vec<ScanPoint>>, Arc<AtomicBool>)> {
+    let (scan_sender, scan_receiver) = channel(10);
+    let should_lidar_run = Arc::new(AtomicBool::new(start_with_lidar_running));
+
+    thread::spawn({
+        let port = port.to_owned();
+        let should_lidar_run = Arc::clone(&should_lidar_run);
+        move || {
+            let mut lidar = RplidarDevice::open_port(&port).unwrap();
+
+            let mut lidar_running = false;
+
+            loop {
+                match should_lidar_run.load(Ordering::Relaxed) {
+                    true => {
+                        if !lidar_running {
+                            let scan_options = ScanOptions::with_mode(2);
+                            let _ = lidar.start_scan_with_options(&scan_options).unwrap();
+                            lidar_running = true;
+                        }
+                        match lidar.grab_scan() {
+                            Ok(scan) => {
+                                scan_sender.blocking_send(scan).unwrap();
+                            }
+                            Err(err) => match err {
+                                RposError::OperationTimeout => continue,
+                                _ => info!("Error: {:?}", err),
+                            },
+                        }
+                    }
+                    false => match lidar_running {
+                        true => {
+                            info!("Stopping lidar");
+                            lidar.stop_motor().unwrap();
+                            lidar_running = false;
+                        }
+                        false => thread::sleep(std::time::Duration::from_millis(500)),
+                    },
+                }
+            }
+        }
+    });
+
+    Ok((scan_receiver, should_lidar_run))
 }
