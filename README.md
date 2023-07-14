@@ -1,5 +1,8 @@
 # rplidar zenoh driver
 
+[![Rust](https://github.com/dmweis/rplidar-zenoh-driver/workflows/Rust/badge.svg)](https://github.com/dmweis/rplidar-zenoh-driver/actions)
+[![Private docs](https://github.com/dmweis/rplidar-zenoh-driver/workflows/Deploy%20Docs%20to%20GitHub%20Pages/badge.svg)](https://davidweis.dev/rplidar-zenoh-driver/rplidar_zenoh_driver/index.html)
+
 ## Install protoc on ubuntu
 
 ```bash
