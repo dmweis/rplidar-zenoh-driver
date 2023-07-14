@@ -146,7 +146,7 @@ async fn main() -> anyhow::Result<()> {
                 info!("Received message: {}", sample);
                 let message: String = sample.value.try_into().unwrap();
                 info!("Message: {}", message);
-                let lidar_command_on = message.is_empty();
+                let lidar_command_on = message.to_lowercase().ends_with("on");
                 if lidar_command_on {
                     info!("Starting scan");
                     should_lidar_run.store(true, Ordering::Relaxed);
