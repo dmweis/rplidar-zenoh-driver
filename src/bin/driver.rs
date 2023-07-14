@@ -10,7 +10,7 @@ use std::{
         Arc,
     },
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc::{channel, Receiver};
 use tracing::info;
@@ -263,6 +263,7 @@ fn start_lidar_driver(
                     true => {
                         if !lidar_running {
                             lidar.start_motor().unwrap();
+                            thread::sleep(Duration::from_secs(2));
                             let scan_options = ScanOptions::with_mode(2);
                             let _ = lidar.start_scan_with_options(&scan_options).unwrap();
                             lidar_running = true;
