@@ -121,7 +121,8 @@ async fn main() -> anyhow::Result<()> {
         }),
     };
 
-    let point_stride = 4 + 4 + 1;
+    //                      x   y   dis ang quality
+    let point_stride = 4 + 4 + 4 + 4 + 1;
     let point_cloud_fields = vec![
         foxglove::PackedElementField {
             name: "x".to_string(),
@@ -134,8 +135,18 @@ async fn main() -> anyhow::Result<()> {
             r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
         },
         foxglove::PackedElementField {
-            name: "quality".to_string(),
+            name: "distance".to_string(),
             offset: 8,
+            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
+        },
+        foxglove::PackedElementField {
+            name: "angle".to_string(),
+            offset: 12,
+            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
+        },
+        foxglove::PackedElementField {
+            name: "quality".to_string(),
+            offset: 16,
             r#type: foxglove::packed_element_field::NumericType::Uint8 as i32,
         },
     ];
@@ -201,7 +212,7 @@ async fn main() -> anyhow::Result<()> {
                 let x = scan_point.distance() * (-scan_point.angle()).cos();
                 let y = scan_point.distance() * (-scan_point.angle()).sin();
                 let quality = scan_point.quality;
-                (x, y, quality)
+                (x, y, scan_point.distance(), scan_point.angle(), quality)
             })
             .collect::<Vec<_>>();
 
@@ -213,10 +224,12 @@ async fn main() -> anyhow::Result<()> {
             fields: point_cloud_fields.clone(),
             data: projected_scan
                 .iter()
-                .flat_map(|(x, y, quality)| {
+                .flat_map(|(x, y, distance, angle, quality)| {
                     // foxglove data is low endian
                     let mut data = x.to_le_bytes().to_vec();
                     data.extend(y.to_le_bytes());
+                    data.extend(distance.to_le_bytes());
+                    data.extend(angle.to_le_bytes());
                     data.extend(quality.to_le_bytes());
                     data
                 })
