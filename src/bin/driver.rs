@@ -145,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
             if let Ok(sample) = subscriber.recv_async().await {
                 info!("Received message: {}", sample);
                 let message: String = sample.value.try_into().unwrap();
+                info!("Message: {}", message);
                 let lidar_command_on = message.is_empty();
                 if lidar_command_on {
                     info!("Starting scan");
