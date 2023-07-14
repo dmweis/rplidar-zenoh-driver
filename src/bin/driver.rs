@@ -262,6 +262,7 @@ fn start_lidar_driver(
                 match should_lidar_run.load(Ordering::Relaxed) {
                     true => {
                         if !lidar_running {
+                            lidar.start_motor().unwrap();
                             let scan_options = ScanOptions::with_mode(2);
                             let _ = lidar.start_scan_with_options(&scan_options).unwrap();
                             lidar_running = true;
