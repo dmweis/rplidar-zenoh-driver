@@ -12,8 +12,8 @@ use std::{
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::mpsc::{channel, Receiver};
-use tracing::info;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tracing::{error, info};
 use zenoh::{config::Config, prelude::r#async::*};
 
 use rplidar_zenoh_driver::setup_tracing;
@@ -253,43 +253,51 @@ fn start_lidar_driver(
     thread::spawn({
         let port = port.to_owned();
         let should_lidar_run = Arc::clone(&should_lidar_run);
-        move || {
-            let mut lidar = RplidarDevice::open_port(&port).unwrap();
-
-            let mut lidar_running = false;
-
-            loop {
-                match should_lidar_run.load(Ordering::Relaxed) {
-                    true => {
-                        if !lidar_running {
-                            lidar.start_motor().unwrap();
-                            thread::sleep(Duration::from_secs(2));
-                            let scan_options = ScanOptions::with_mode(2);
-                            let _ = lidar.start_scan_with_options(&scan_options).unwrap();
-                            lidar_running = true;
-                        }
-                        match lidar.grab_scan() {
-                            Ok(scan) => {
-                                scan_sender.blocking_send(scan).unwrap();
-                            }
-                            Err(err) => match err {
-                                RposError::OperationTimeout => continue,
-                                _ => info!("Error: {:?}", err),
-                            },
-                        }
-                    }
-                    false => match lidar_running {
-                        true => {
-                            info!("Stopping lidar");
-                            lidar.stop_motor().unwrap();
-                            lidar_running = false;
-                        }
-                        false => thread::sleep(std::time::Duration::from_millis(500)),
-                    },
-                }
+        move || loop {
+            if let Err(err) = lidar_loop(&port, scan_sender.clone(), should_lidar_run.clone()) {
+                error!("Lidar loop error: {}", err);
+                thread::sleep(Duration::from_secs(1));
             }
         }
     });
 
     Ok((scan_receiver, should_lidar_run))
+}
+
+fn lidar_loop(
+    port: &str,
+    scan_sender: Sender<Vec<ScanPoint>>,
+    should_lidar_run: Arc<AtomicBool>,
+) -> anyhow::Result<()> {
+    let mut lidar = RplidarDevice::open_port(port)?;
+    let mut lidar_running = false;
+    loop {
+        match should_lidar_run.load(Ordering::Relaxed) {
+            true => {
+                if !lidar_running {
+                    lidar.start_motor()?;
+                    let scan_options = ScanOptions::with_mode(2);
+                    let _ = lidar.start_scan_with_options(&scan_options)?;
+                    lidar_running = true;
+                }
+                match lidar.grab_scan() {
+                    Ok(scan) => {
+                        scan_sender.blocking_send(scan)?;
+                    }
+                    Err(err) => match err {
+                        RposError::OperationTimeout => continue,
+                        _ => info!("Error: {:?}", err),
+                    },
+                }
+            }
+            false => match lidar_running {
+                true => {
+                    info!("Stopping lidar");
+                    lidar.stop_motor()?;
+                    lidar_running = false;
+                }
+                false => thread::sleep(std::time::Duration::from_millis(500)),
+            },
+        }
+    }
 }
