@@ -24,6 +24,8 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 # rebuild dependencies if changed
 FROM chef as builder
+# install deb because it doesn't chage often
+RUN cargo install cargo-deb
 
 # dependancies rebuild
 COPY --from=planner /app/recipe.json recipe.json
@@ -34,9 +36,11 @@ COPY . .
 
 # Build
 RUN cargo build --all --bins --release
+RUN cargo deb --no-build
 
 # Copy to exporter
 FROM scratch AS export
 COPY --from=builder /app/target/release/driver /
 COPY --from=builder /app/target/release/foxglove_server /
 COPY --from=builder /app/target/release/mcap_logger /
+COPY --from=builder target/debian/rplidar-zenoh-driver*.deb /
