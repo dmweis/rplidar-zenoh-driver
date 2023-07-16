@@ -1,0 +1,15 @@
+[Unit]
+Description=Rplidar Zenoh driver
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=rplidarzenohdriver
+DynamicUser=yes
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/bin/rplidar-zenoh-driver --serial-port /dev/rplidar  --listen tcp/0.0.0.0:7447 --lidar-off
+
+[Install]
+WantedBy=default.target

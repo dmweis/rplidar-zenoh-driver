@@ -1,10 +1,25 @@
 [package]
 authors = ["David Michael Weis <dweis7@gmail.com>"]
+description = "Rplidar driver that publishes scans to zenoh"
 edition = "2021"
 license = "MIT OR APACHE"
 name = "rplidar-zenoh-driver"
 publish = false
 version = "0.1.0"
+
+# Debian package
+[package.metadata.deb]
+assets = [
+  [
+    "target/release/driver",
+    "/usr/bin/rplidar-zenoh-driver",
+    "755",
+  ],
+]
+maintainer = "David Weis <dweis7@gmail.com>"
+maintainer-scripts = "debian/"
+
+[package.metadata.deb.systemd-units]
 
 [dependencies]
 rplidar_driver = {git = "https://github.com/dmweis/rplidar_driver", branch = "main"}
