@@ -32,13 +32,13 @@ struct Args {
     #[clap(long, default_value = "point_cloud")]
     cloud_topic: String,
 
-    /// listen on
-    #[clap(long)]
-    listen: Vec<String>,
+    /// Endpoints to connect to.
+    #[clap(short = 'e', long)]
+    connect: Vec<zenoh_config::EndPoint>,
 
-    /// connect to
+    /// Endpoints to listen on.
     #[clap(long)]
-    connect: Vec<String>,
+    listen: Vec<zenoh_config::EndPoint>,
 
     /// foxglove bind address
     #[clap(long, default_value = "127.0.0.1:8765")]
@@ -60,20 +60,12 @@ async fn main() -> anyhow::Result<()> {
 
     let mut zenoh_config = Config::default();
     if !args.listen.is_empty() {
-        zenoh_config.listen.endpoints = args
-            .listen
-            .iter()
-            .map(|endpoint| endpoint.parse().unwrap())
-            .collect();
+        zenoh_config.listen.endpoints = args.listen.clone();
         info!(listen_endpoints= ?zenoh_config.listen.endpoints, "Configured listening endpoints");
     }
 
     if !args.connect.is_empty() {
-        zenoh_config.connect.endpoints = args
-            .connect
-            .iter()
-            .map(|endpoint| endpoint.parse().unwrap())
-            .collect();
+        zenoh_config.connect.endpoints = args.connect.clone();
         info!(connect_endpoints= ?zenoh_config.connect.endpoints, "Configured connect endpoints");
     }
 

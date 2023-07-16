@@ -24,7 +24,10 @@ maintainer-scripts = "debian/"
 [dependencies]
 rplidar_driver = {git = "https://github.com/dmweis/rplidar_driver", branch = "main"}
 tokio = {version = "1", features = ["macros", "rt-multi-thread", "fs", "sync", "signal"]}
+
+# zenoh
 zenoh = "0.7.2-rc"
+zenoh-config = "0.7.2-rc"
 
 # protobuf
 once_cell = "1.17.0"
