@@ -1,9 +1,10 @@
 use clap::Parser;
+use foxglove_ws::{Channel, FoxgloveWebSocket};
 use mcap::records::system_time_to_nanos;
 use once_cell::sync::Lazy;
 use prost_reflect::{DescriptorPool, ReflectMessage};
-use std::{net::SocketAddr, time::SystemTime};
-use tokio::{select, signal};
+use std::{net::SocketAddr, sync::Arc, time::SystemTime};
+use tokio::signal;
 use tracing::info;
 use zenoh::{config::Config, prelude::r#async::*};
 
@@ -45,112 +46,106 @@ struct Args {
     host: SocketAddr,
 }
 
-const PROTOBUF_ENCODING: &str = "protobuf";
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Args = Args::parse();
     setup_tracing()?;
 
+    // start foxglove server
     let server = foxglove_ws::FoxgloveWebSocket::new();
     tokio::spawn({
         let server = server.clone();
         async move { server.serve(args.host).await }
     });
 
+    // configure zenoh
     let mut zenoh_config = Config::default();
     if !args.listen.is_empty() {
         zenoh_config.listen.endpoints = args.listen.clone();
         info!(listen_endpoints= ?zenoh_config.listen.endpoints, "Configured listening endpoints");
     }
-
     if !args.connect.is_empty() {
         zenoh_config.connect.endpoints = args.connect.clone();
         info!(connect_endpoints= ?zenoh_config.connect.endpoints, "Configured connect endpoints");
     }
 
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
+    let zenoh_session = zenoh_session.into_arc();
     info!("Started zenoh session");
 
-    let laser_scan_subscriber = zenoh_session
-        .declare_subscriber(&args.scan_topic)
-        .res()
-        .await
-        .unwrap();
+    start_proto_subscriber(
+        &args.scan_topic,
+        zenoh_session.clone(),
+        &server,
+        &foxglove::LaserScan::default(),
+    )
+    .await?;
 
-    let point_cloud_subscriber = zenoh_session
-        .declare_subscriber(&args.cloud_topic)
-        .res()
-        .await
-        .unwrap();
+    start_proto_subscriber(
+        &args.cloud_topic,
+        zenoh_session.clone(),
+        &server,
+        &foxglove::PointCloud::default(),
+    )
+    .await?;
 
-    let laser_scan_message = foxglove::LaserScan::default();
-    let laser_scan_schema_data = laser_scan_message
-        .descriptor()
-        .parent_pool()
-        .encode_to_vec();
-    let laser_scan_channel = server
-        .create_publisher(
-            &args.scan_topic,
-            PROTOBUF_ENCODING,
-            laser_scan_message.descriptor().full_name(),
-            laser_scan_schema_data,
-            Some(PROTOBUF_ENCODING),
-            false,
-        )
-        .await?;
-
-    let point_cloud_message = foxglove::PointCloud::default();
-    let point_cloud_schema_data = point_cloud_message
-        .descriptor()
-        .parent_pool()
-        .encode_to_vec();
-    let point_cloud_channel = server
-        .create_publisher(
-            &args.cloud_topic,
-            PROTOBUF_ENCODING,
-            point_cloud_message.descriptor().full_name(),
-            point_cloud_schema_data,
-            Some(PROTOBUF_ENCODING),
-            false,
-        )
-        .await?;
-
-    let mut laser_scan_counter = 0;
-    let mut point_cloud_counter = 0;
-    loop {
-        select!(
-            sample = laser_scan_subscriber.recv_async() => {
-                let sample = sample.unwrap();
-                laser_scan_counter+= 1;
-                let now = SystemTime::now();
-                let time_nanos = system_time_to_nanos(&now);
-                let payload: Vec<u8> = sample.value.try_into()?;
-                laser_scan_channel.send(time_nanos, &payload).await?;
-
-                if laser_scan_counter % 20 == 0 {
-                    info!("laser_scan_counter: {}", laser_scan_counter);
-                }
-            },
-
-            sample = point_cloud_subscriber.recv_async() => {
-                let sample = sample.unwrap();
-                point_cloud_counter+= 1;
-                let now = SystemTime::now();
-                let time_nanos = system_time_to_nanos(&now);
-                let payload: Vec<u8> = sample.value.try_into()?;
-                point_cloud_channel.send(time_nanos, &payload).await?;
-
-                if point_cloud_counter % 20 == 0 {
-                    info!("point_cloud_counter: {}", point_cloud_counter);
-                }
-            },
-            _ = signal::ctrl_c() => {
-                info!("ctrl-c received, exiting");
-                break;
-            }
-        );
-    }
+    signal::ctrl_c().await.unwrap();
+    info!("ctrl-c received, exiting");
 
     Ok(())
+}
+
+async fn start_proto_subscriber(
+    topic: &str,
+    zenoh_session: Arc<Session>,
+    foxglove_server: &FoxgloveWebSocket,
+    protobuf: &dyn ReflectMessage,
+) -> anyhow::Result<()> {
+    info!(topic, "Starting proto subscriber");
+    let zenoh_subscriber = zenoh_session.declare_subscriber(topic).res().await.unwrap();
+
+    let foxglove_channel = create_publisher_for_protobuf(protobuf, foxglove_server, topic).await?;
+
+    tokio::spawn({
+        let topic = topic.to_owned();
+        async move {
+            let mut message_counter = 0;
+            loop {
+                let sample = zenoh_subscriber.recv_async().await.unwrap();
+                message_counter += 1;
+                let now = SystemTime::now();
+                let time_nanos = system_time_to_nanos(&now);
+                let payload: Vec<u8> = sample.value.try_into().unwrap();
+                foxglove_channel.send(time_nanos, &payload).await.unwrap();
+
+                if message_counter % 20 == 0 {
+                    info!(
+                        topic,
+                        message_counter, "{} sent {} messages", topic, message_counter
+                    );
+                }
+            }
+        }
+    });
+    Ok(())
+}
+
+const PROTOBUF_ENCODING: &str = "protobuf";
+
+async fn create_publisher_for_protobuf(
+    protobuf: &dyn ReflectMessage,
+    foxglove_server: &FoxgloveWebSocket,
+    topic: &str,
+) -> anyhow::Result<Channel> {
+    let protobuf_schema_data = protobuf.descriptor().parent_pool().encode_to_vec();
+    foxglove_server
+        .create_publisher(
+            topic,
+            PROTOBUF_ENCODING,
+            protobuf.descriptor().full_name(),
+            protobuf_schema_data,
+            Some(PROTOBUF_ENCODING),
+            false,
+        )
+        .await
 }
