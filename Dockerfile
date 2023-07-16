@@ -43,4 +43,4 @@ FROM scratch AS export
 COPY --from=builder /app/target/release/driver /
 COPY --from=builder /app/target/release/foxglove_server /
 COPY --from=builder /app/target/release/mcap_logger /
-COPY --from=builder target/debian/rplidar-zenoh-driver*.deb /
+COPY --from=builder /app/target/debian/rplidar-zenoh-driver*.deb /
