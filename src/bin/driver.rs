@@ -13,7 +13,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tracing::{error, info};
+use tracing::{error, info, log::warn};
 use zenoh::{config::Config, prelude::r#async::*};
 
 use rplidar_zenoh_driver::setup_tracing;
@@ -155,15 +155,18 @@ async fn main() -> anyhow::Result<()> {
         loop {
             if let Ok(sample) = subscriber.recv_async().await {
                 info!("Received message: {}", sample);
-                let message: String = sample.value.try_into().unwrap();
-                info!("Message: {}", message);
-                let lidar_command_on = message.to_lowercase().ends_with("on");
-                if lidar_command_on {
-                    info!("Starting scan");
-                    should_lidar_run.store(true, Ordering::Relaxed);
+                if let Ok(message) = TryInto::<String>::try_into(&sample.value) {
+                    info!("Message: {}", message);
+                    let lidar_command_on = message.to_lowercase().ends_with("on");
+                    if lidar_command_on {
+                        info!("Starting scan");
+                        should_lidar_run.store(true, Ordering::Relaxed);
+                    } else {
+                        info!("Stopping scan");
+                        should_lidar_run.store(false, Ordering::Relaxed);
+                    }
                 } else {
-                    info!("Stopping scan");
-                    should_lidar_run.store(false, Ordering::Relaxed);
+                    warn!("Failed to parse message: {:?}", sample.value);
                 }
             }
         }
