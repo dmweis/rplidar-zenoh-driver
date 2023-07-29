@@ -19,12 +19,19 @@ static DESCRIPTOR_POOL: Lazy<DescriptorPool> = Lazy::new(|| {
 
 /// protobuf
 pub mod foxglove {
+    #![allow(non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/foxglove.rs"));
 }
 
 #[derive(Parser, Debug)]
 #[command()]
 struct Args {
+    /// lidar prefix
+    ///
+    /// Prefix for all topics
+    #[clap(long, default_value = "rplidar")]
+    prefix: String,
+
     /// publish topic
     #[clap(long, default_value = "laser_scan")]
     scan_topic: String,
@@ -73,16 +80,18 @@ async fn main() -> anyhow::Result<()> {
     let zenoh_session = zenoh_session.into_arc();
     info!("Started zenoh session");
 
+    let scan_topic = format!("{}/{}", args.prefix, args.scan_topic);
     start_proto_subscriber(
-        &args.scan_topic,
+        &scan_topic,
         zenoh_session.clone(),
         &server,
         &foxglove::LaserScan::default(),
     )
     .await?;
 
+    let cloud_topic = format!("{}/{}", args.prefix, args.cloud_topic);
     start_proto_subscriber(
-        &args.cloud_topic,
+        &cloud_topic,
         zenoh_session.clone(),
         &server,
         &foxglove::PointCloud::default(),

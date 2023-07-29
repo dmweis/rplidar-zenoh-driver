@@ -21,12 +21,19 @@ static DESCRIPTOR_POOL: Lazy<DescriptorPool> = Lazy::new(|| {
 
 /// protobuf
 pub mod foxglove {
+    #![allow(non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/foxglove.rs"));
 }
 
 #[derive(Parser, Debug)]
 #[command()]
 struct Args {
+    /// lidar prefix
+    ///
+    /// Prefix for all topics
+    #[clap(long, default_value = "rplidar")]
+    prefix: String,
+
     /// publish topic
     #[clap(long, default_value = "laser_scan")]
     scan_topic: String,
@@ -80,25 +87,27 @@ async fn main() -> anyhow::Result<()> {
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
     info!("Started zenoh session");
 
+    let scan_topic = format!("{}/{}", args.prefix, args.scan_topic);
     let laser_scan_subscriber = zenoh_session
-        .declare_subscriber(&args.scan_topic)
+        .declare_subscriber(&scan_topic)
         .res()
         .await
         .unwrap();
 
+    let point_cloud_topic = format!("{}/{}", args.prefix, args.cloud_topic);
     let point_cloud_subscriber = zenoh_session
-        .declare_subscriber(&args.cloud_topic)
+        .declare_subscriber(&point_cloud_topic)
         .res()
         .await
         .unwrap();
 
     let laser_scan_message = foxglove::LaserScan::default();
     let laser_scan_channel_id =
-        register_mcap_topic_for_protobuf(&laser_scan_message, &mut out, &args.scan_topic)?;
+        register_mcap_topic_for_protobuf(&laser_scan_message, &mut out, &scan_topic)?;
 
     let point_cloud_message = foxglove::PointCloud::default();
     let point_cloud_channel_id =
-        register_mcap_topic_for_protobuf(&point_cloud_message, &mut out, &args.cloud_topic)?;
+        register_mcap_topic_for_protobuf(&point_cloud_message, &mut out, &point_cloud_topic)?;
 
     let mut laser_scan_counter = 0;
     let mut point_cloud_counter = 0;

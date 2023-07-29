@@ -27,6 +27,7 @@ static DESCRIPTOR_POOL: Lazy<DescriptorPool> = Lazy::new(|| {
 
 /// protobuf
 pub mod foxglove {
+    #![allow(non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/foxglove.rs"));
 }
 
@@ -40,6 +41,12 @@ struct Args {
     /// serial port for lidar
     #[clap(long)]
     serial_port: String,
+
+    /// zenoh prefix
+    ///
+    /// Prefix for all topics
+    #[clap(long, default_value = "rplidar")]
+    prefix: String,
 
     /// publish topic
     #[clap(long, default_value = "laser_scan")]
@@ -89,20 +96,23 @@ async fn main() -> anyhow::Result<()> {
 
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap().into_arc();
 
+    let state_topic = format!("{}/state", args.prefix);
     let subscriber = zenoh_session
-        .declare_subscriber("lidar_state")
+        .declare_subscriber(&state_topic)
         .res()
         .await
         .unwrap();
 
+    let laser_scan_topic = format!("{}/{}", args.prefix, args.scan_topic);
     let laser_scan_publisher = zenoh_session
-        .declare_publisher(args.scan_topic)
+        .declare_publisher(laser_scan_topic)
         .res()
         .await
         .unwrap();
 
+    let point_cloud_topic = format!("{}/{}", args.prefix, args.cloud_topic);
     let point_cloud_publisher = zenoh_session
-        .declare_publisher(args.cloud_topic)
+        .declare_publisher(point_cloud_topic)
         .res()
         .await
         .unwrap();
