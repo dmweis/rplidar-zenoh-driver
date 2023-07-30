@@ -96,21 +96,27 @@ async fn main() -> anyhow::Result<()> {
 
     let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap().into_arc();
 
-    let state_topic = format!("{}/state", args.prefix);
+    let state_topic = format!("{}/state", args.prefix)
+        .trim_matches('/')
+        .to_owned();
     let subscriber = zenoh_session
         .declare_subscriber(&state_topic)
         .res()
         .await
         .unwrap();
 
-    let laser_scan_topic = format!("{}/{}", args.prefix, args.scan_topic);
+    let laser_scan_topic = format!("{}/{}", args.prefix, args.scan_topic)
+        .trim_matches('/')
+        .to_owned();
     let laser_scan_publisher = zenoh_session
         .declare_publisher(laser_scan_topic)
         .res()
         .await
         .unwrap();
 
-    let point_cloud_topic = format!("{}/{}", args.prefix, args.cloud_topic);
+    let point_cloud_topic = format!("{}/{}", args.prefix, args.cloud_topic)
+        .trim_matches('/')
+        .to_owned();
     let point_cloud_publisher = zenoh_session
         .declare_publisher(point_cloud_topic)
         .res()

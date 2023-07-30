@@ -80,7 +80,9 @@ async fn main() -> anyhow::Result<()> {
     let zenoh_session = zenoh_session.into_arc();
     info!("Started zenoh session");
 
-    let scan_topic = format!("{}/{}", args.prefix, args.scan_topic);
+    let scan_topic = format!("{}/{}", args.prefix, args.scan_topic)
+        .trim_matches('/')
+        .to_owned();
     start_proto_subscriber(
         &scan_topic,
         zenoh_session.clone(),
@@ -89,12 +91,22 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let cloud_topic = format!("{}/{}", args.prefix, args.cloud_topic);
+    let cloud_topic = format!("{}/{}", args.prefix, args.cloud_topic)
+        .trim_matches('/')
+        .to_owned();
     start_proto_subscriber(
         &cloud_topic,
         zenoh_session.clone(),
         &server,
         &foxglove::PointCloud::default(),
+    )
+    .await?;
+
+    start_proto_subscriber(
+        "hopper/camera/image",
+        zenoh_session.clone(),
+        &server,
+        &foxglove::CompressedImage::default(),
     )
     .await?;
 
