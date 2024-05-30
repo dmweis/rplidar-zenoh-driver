@@ -3,4 +3,5 @@ Cargo.lock
 /target
 
 out.mcap
+*.mcap
 docker_out/
