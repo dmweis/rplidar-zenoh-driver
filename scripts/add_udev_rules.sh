@@ -11,8 +11,12 @@ echo "writing udev rules to $udev_path"
 cat <<EOT | sudo tee $udev_path > /dev/null
 
 # rplidar
-KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.3", MODE:="0777", SYMLINK+="rplidar"
-KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.4", MODE:="0777", SYMLINK+="zigbeebridge"
+KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE:="0777", SYMLINK+="rplidar"
+
+# homepi
+# KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.3", MODE:="0777", SYMLINK+="rplidar"
+# KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.4", MODE:="0777", SYMLINK+="zigbeebridge"
+
 
 EOT
 
