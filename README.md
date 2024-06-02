@@ -16,3 +16,7 @@ sudo apt update && sudo apt install autoconf automake libtool curl make g++ unzi
 5. `make -j16 check`
 6. `sudo make install`
 7. `sudo ldconfig`
+
+## Connection
+
+`ws://dork.hedgehog-silverside.ts.net:8765/`

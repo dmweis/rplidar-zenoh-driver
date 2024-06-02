@@ -1,27 +1,13 @@
 use clap::Parser;
 use foxglove_ws::{Channel, FoxgloveWebSocket};
 use mcap::records::system_time_to_nanos;
-use once_cell::sync::Lazy;
-use prost_reflect::{DescriptorPool, ReflectMessage};
+use prost_reflect::ReflectMessage;
 use std::{net::SocketAddr, sync::Arc, time::SystemTime};
 use tokio::signal;
 use tracing::info;
 use zenoh::{config::Config, prelude::r#async::*};
 
-use rplidar_zenoh_driver::setup_tracing;
-
-static FILE_DESCRIPTOR_SET: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/file_descriptor_set.bin"));
-
-static DESCRIPTOR_POOL: Lazy<DescriptorPool> = Lazy::new(|| {
-    DescriptorPool::decode(FILE_DESCRIPTOR_SET).expect("Failed to load file descriptor set")
-});
-
-/// protobuf
-pub mod foxglove {
-    #![allow(non_snake_case)]
-    include!(concat!(env!("OUT_DIR"), "/foxglove.rs"));
-}
+use rplidar_zenoh_driver::{foxglove, setup_tracing};
 
 #[derive(Parser, Debug)]
 #[command()]
@@ -102,94 +88,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    start_proto_subscriber(
-        "hopper/camera/image",
-        zenoh_session.clone(),
-        &server,
-        &foxglove::CompressedImage::default(),
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/ikea_dimmer",
-        zenoh_session.clone(),
-        &server,
-        "IkeaDimmer",
-        IKEA_DIMMER_JSON_SCHEMA,
-        false,
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/motion/one",
-        zenoh_session.clone(),
-        &server,
-        "MotionSensor",
-        MOTION_SENSOR_JSON_SCHEMA,
-        true,
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/motion/two",
-        zenoh_session.clone(),
-        &server,
-        "MotionSensor",
-        MOTION_SENSOR_JSON_SCHEMA,
-        true,
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/motion/three",
-        zenoh_session.clone(),
-        &server,
-        "MotionSensor",
-        MOTION_SENSOR_JSON_SCHEMA,
-        true,
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/contact/fridge",
-        zenoh_session.clone(),
-        &server,
-        "ContactSensor",
-        CONTACT_SENSOR_JSON_SCHEMA,
-        true,
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/contact/main_door",
-        zenoh_session.clone(),
-        &server,
-        "ContactSensor",
-        CONTACT_SENSOR_JSON_SCHEMA,
-        true,
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/contact/lock",
-        zenoh_session.clone(),
-        &server,
-        "ContactSensor",
-        CONTACT_SENSOR_JSON_SCHEMA,
-        true,
-    )
-    .await?;
-
-    start_json_subscriber(
-        "zigbee2mqtt/climate_sensor/one",
-        zenoh_session.clone(),
-        &server,
-        "ClimateSensor",
-        CLIMATE_SENSOR_JSON_SCHEMA,
-        true,
-    )
-    .await?;
-
     signal::ctrl_c().await.unwrap();
     info!("ctrl-c received, exiting");
 
@@ -251,8 +149,10 @@ async fn create_publisher_for_protobuf(
         .await
 }
 
+#[allow(dead_code)]
 const JSON_ENCODING: &str = "json";
 
+#[allow(dead_code)]
 async fn start_json_subscriber(
     topic: &str,
     zenoh_session: Arc<Session>,
@@ -305,133 +205,5 @@ const GENERIC_JSON_SCHEMA: &str = r#"
 "description": "Generic JSON Schema",
 "type": "object",
 "properties": {}
-}
-"#;
-
-const IKEA_DIMMER_JSON_SCHEMA: &str = r#"
-{
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "type": "object",
-    "properties": {
-      "action": {
-        "type": "string"
-      },
-      "battery": {
-        "type": "integer"
-      },
-      "brightness": {
-        "type": "integer"
-      },
-      "linkquality": {
-        "type": "integer"
-      }
-    },
-    "required": [
-      "action",
-      "battery",
-      "brightness",
-      "linkquality"
-    ]
-}
-"#;
-
-const MOTION_SENSOR_JSON_SCHEMA: &str = r#"
-{
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "type": "object",
-    "properties": {
-      "battery": {
-        "type": "integer"
-      },
-      "battery_low": {
-        "type": "boolean"
-      },
-      "linkquality": {
-        "type": "integer"
-      },
-      "occupancy": {
-        "type": "boolean"
-      },
-      "tamper": {
-        "type": "boolean"
-      },
-      "voltage": {
-        "type": "integer"
-      }
-    },
-    "required": [
-      "battery",
-      "battery_low",
-      "linkquality",
-      "occupancy",
-      "tamper",
-      "voltage"
-    ]
-  }
-"#;
-
-const CONTACT_SENSOR_JSON_SCHEMA: &str = r#"
-{
-"$schema": "http://json-schema.org/draft-04/schema#",
-"type": "object",
-"properties": {
-    "battery": {
-    "type": "integer"
-    },
-    "battery_low": {
-    "type": "boolean"
-    },
-    "contact": {
-    "type": "boolean"
-    },
-    "linkquality": {
-    "type": "integer"
-    },
-    "tamper": {
-    "type": "boolean"
-    },
-    "voltage": {
-    "type": "integer"
-    }
-},
-"required": [
-    "battery",
-    "battery_low",
-    "contact",
-    "linkquality",
-    "tamper",
-    "voltage"
-]
-}
-"#;
-
-const CLIMATE_SENSOR_JSON_SCHEMA: &str = r#"
-{
-"$schema": "http://json-schema.org/draft-04/schema#",
-"type": "object",
-"properties": {
-    "battery": {
-    "type": "integer"
-    },
-    "humidity": {
-    "type": "number"
-    },
-    "linkquality": {
-    "type": "integer"
-    },
-    "temperature": {
-    "type": "number"
-    },
-    "voltage": {
-    "type": "integer"
-    }
-},
-"required": [
-    "battery",
-    "humidity",
-    "linkquality",
-    "temperature",
-    "voltage"
-]
 }
 "#;

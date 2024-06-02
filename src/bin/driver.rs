@@ -1,7 +1,5 @@
 use clap::Parser;
-use once_cell::sync::Lazy;
 use prost::Message;
-use prost_reflect::DescriptorPool;
 use prost_types::Timestamp;
 use rplidar_driver::{utils::sort_scan, RplidarDevice, RposError, ScanOptions, ScanPoint};
 use std::{
@@ -16,20 +14,7 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::{error, info, log::warn};
 use zenoh::{config::Config, prelude::r#async::*};
 
-use rplidar_zenoh_driver::setup_tracing;
-
-static FILE_DESCRIPTOR_SET: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/file_descriptor_set.bin"));
-
-static DESCRIPTOR_POOL: Lazy<DescriptorPool> = Lazy::new(|| {
-    DescriptorPool::decode(FILE_DESCRIPTOR_SET).expect("Failed to load file descriptor set")
-});
-
-/// protobuf
-pub mod foxglove {
-    #![allow(non_snake_case)]
-    include!(concat!(env!("OUT_DIR"), "/foxglove.rs"));
-}
+use rplidar_zenoh_driver::{foxglove, setup_tracing};
 
 #[derive(Parser, Debug)]
 #[command()]
@@ -199,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
 
         sort_scan(&mut scan)?;
 
-        let start_angle = scan.get(0).map(|point| point.angle()).unwrap_or_default();
+        let start_angle = scan.first().map(|point| point.angle()).unwrap_or_default();
         let end_angle = scan
             .iter()
             .last()
