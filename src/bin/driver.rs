@@ -1,6 +1,5 @@
 use clap::Parser;
 use prost::Message;
-use prost_types::Timestamp;
 use rplidar_driver::{utils::sort_scan, RplidarDevice, RposError, ScanOptions, ScanPoint};
 use std::{
     sync::{
@@ -8,13 +7,16 @@ use std::{
         Arc,
     },
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime},
 };
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::{error, info, log::warn};
 use zenoh::{config::Config, prelude::r#async::*};
 
-use rplidar_zenoh_driver::{foxglove, setup_tracing};
+use rplidar_zenoh_driver::{
+    foxglove, rp_lidar_projected_points_to_foxglove_point_cloud, setup_tracing,
+    system_time_to_proto_time, RpLidarProjectedPoint,
+};
 
 #[derive(Parser, Debug)]
 #[command()]
@@ -122,36 +124,6 @@ async fn main() -> anyhow::Result<()> {
         }),
     };
 
-    //                      x   y   dis ang quality
-    let point_stride = 4 + 4 + 4 + 4 + 1;
-    let point_cloud_fields = vec![
-        foxglove::PackedElementField {
-            name: "x".to_string(),
-            offset: 0,
-            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
-        },
-        foxglove::PackedElementField {
-            name: "y".to_string(),
-            offset: 4,
-            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
-        },
-        foxglove::PackedElementField {
-            name: "distance".to_string(),
-            offset: 8,
-            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
-        },
-        foxglove::PackedElementField {
-            name: "angle".to_string(),
-            offset: 12,
-            r#type: foxglove::packed_element_field::NumericType::Float32 as i32,
-        },
-        foxglove::PackedElementField {
-            name: "quality".to_string(),
-            offset: 16,
-            r#type: foxglove::packed_element_field::NumericType::Uint8 as i32,
-        },
-    ];
-
     tokio::spawn(async move {
         loop {
             if let Ok(sample) = subscriber.recv_async().await {
@@ -216,29 +188,17 @@ async fn main() -> anyhow::Result<()> {
                 let x = scan_point.distance() * (-scan_point.angle()).cos();
                 let y = scan_point.distance() * (-scan_point.angle()).sin();
                 let quality = scan_point.quality;
-                (x, y, scan_point.distance(), scan_point.angle(), quality)
+
+                RpLidarProjectedPoint::new(x, y, scan_point.distance(), scan_point.angle(), quality)
             })
             .collect::<Vec<_>>();
 
-        let point_cloud = foxglove::PointCloud {
-            timestamp: Some(system_time_to_proto_time(&capture_time)),
-            frame_id: args.frame_id.clone(),
-            pose: Some(pose.clone()),
-            point_stride,
-            fields: point_cloud_fields.clone(),
-            data: projected_scan
-                .iter()
-                .flat_map(|(x, y, distance, angle, quality)| {
-                    // foxglove data is low endian
-                    let mut data = x.to_le_bytes().to_vec();
-                    data.extend(y.to_le_bytes());
-                    data.extend(distance.to_le_bytes());
-                    data.extend(angle.to_le_bytes());
-                    data.extend(quality.to_le_bytes());
-                    data
-                })
-                .collect(),
-        };
+        let point_cloud = rp_lidar_projected_points_to_foxglove_point_cloud(
+            &capture_time,
+            &args.frame_id,
+            &pose,
+            &projected_scan,
+        );
 
         point_cloud_publisher
             .put(point_cloud.encode_to_vec())
@@ -248,16 +208,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn system_time_to_proto_time(time: &SystemTime) -> Timestamp {
-    let duration = time
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    Timestamp {
-        seconds: duration.as_secs() as i64,
-        nanos: duration.subsec_nanos() as i32,
-    }
 }
 
 fn start_lidar_driver(
