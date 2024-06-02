@@ -1,0 +1,211 @@
+{
+    "configById": {
+        "3D!33mpyjk": {
+            "cameraState": {
+                "perspective": true,
+                "distance": 7.547072050669176,
+                "phi": 61.86131083769797,
+                "thetaOffset": -43.21520801919453,
+                "targetOffset": [
+                    2.739932040548093,
+                    -1.0550131185290539,
+                    1.286992650880505e-16
+                ],
+                "target": [
+                    0,
+                    0,
+                    0
+                ],
+                "targetOrientation": [
+                    0,
+                    0,
+                    0,
+                    1
+                ],
+                "fovy": 45,
+                "near": 0.5,
+                "far": 5000,
+                "logDepth": false
+            },
+            "followMode": "follow-pose",
+            "scene": {
+                "transforms": {
+                    "editable": false,
+                    "enablePreloading": true,
+                    "showLabel": true,
+                    "axisScale": 0,
+                    "lineWidth": 1,
+                    "labelSize": 0.2
+                },
+                "enableStats": true,
+                "syncCamera": true
+            },
+            "transforms": {
+                "frame:link": {
+                    "visible": true,
+                    "rpyOffset": [
+                        0,
+                        0,
+                        72.20000000000002
+                    ]
+                },
+                "frame:base": {
+                    "visible": true
+                },
+                "frame:lidar": {
+                    "visible": true
+                }
+            },
+            "topics": {
+                "point_cloud": {
+                    "visible": true,
+                    "colorField": "x",
+                    "colorMode": "colormap",
+                    "colorMap": "turbo"
+                },
+                "rplidar/laser_scan": {
+                    "visible": false,
+                    "colorField": "intensity",
+                    "colorMode": "colormap",
+                    "colorMap": "turbo"
+                },
+                "rplidar/hopper/lidar/point_cloud": {
+                    "visible": true
+                },
+                "hopper/lidar/point_cloud": {
+                    "visible": true,
+                    "colorField": "x",
+                    "colorMode": "colormap",
+                    "colorMap": "turbo",
+                    "stixelsEnabled": false
+                },
+                "laser_scan": {
+                    "visible": false
+                },
+                "hopper/camera/image": {
+                    "visible": false
+                },
+                "hopper/lidar/laser_scan": {
+                    "visible": false
+                },
+                "rplidar/point_cloud": {
+                    "visible": true,
+                    "colorField": "distance",
+                    "colorMode": "colormap",
+                    "colorMap": "turbo",
+                    "decayTime": 0,
+                    "stixelsEnabled": false,
+                    "gradient": [
+                        "#ff0000ff",
+                        "#00ff46ff"
+                    ]
+                }
+            },
+            "layers": {},
+            "publish": {
+                "type": "point",
+                "poseTopic": "/move_base_simple/goal",
+                "pointTopic": "/clicked_point",
+                "poseEstimateTopic": "/initialpose",
+                "poseEstimateXDeviation": 0.5,
+                "poseEstimateYDeviation": 0.5,
+                "poseEstimateThetaDeviation": 0.26179939
+            },
+            "imageMode": {},
+            "followTf": "lidar"
+        },
+        "SourceInfo!23x2wre": {},
+        "RawMessages!1d40esi": {
+            "diffEnabled": false,
+            "diffMethod": "custom",
+            "diffTopicPath": "",
+            "showFullMessageForDiff": false,
+            "topicPath": "rplidar/point_cloud",
+            "expansion": {
+                "fields": "e",
+                "0~fields": "c",
+                "1~fields": "c",
+                "2~fields": "c",
+                "3~fields": "c",
+                "4~fields": "c",
+                "timestamp": "e",
+                "pose": "e",
+                "position~pose": "e",
+                "orientation~pose": "e"
+            }
+        },
+        "3D!4azj2ss": {
+            "cameraState": {
+                "perspective": false,
+                "distance": 15.475618749994574,
+                "phi": 43.78881987577601,
+                "thetaOffset": -90.00000000000028,
+                "targetOffset": [
+                    0,
+                    0,
+                    -4.400017435368084e-18
+                ],
+                "target": [
+                    0,
+                    0,
+                    0
+                ],
+                "targetOrientation": [
+                    0,
+                    0,
+                    0,
+                    1
+                ],
+                "fovy": 45,
+                "near": 0.5,
+                "far": 5000
+            },
+            "followMode": "follow-none",
+            "scene": {
+                "syncCamera": false,
+                "transforms": {
+                    "showLabel": false
+                }
+            },
+            "transforms": {},
+            "topics": {
+                "rplidar/point_cloud": {
+                    "visible": true,
+                    "colorField": "x",
+                    "colorMode": "colormap",
+                    "colorMap": "turbo"
+                }
+            },
+            "layers": {},
+            "publish": {
+                "type": "point",
+                "poseTopic": "/move_base_simple/goal",
+                "pointTopic": "/clicked_point",
+                "poseEstimateTopic": "/initialpose",
+                "poseEstimateXDeviation": 0.5,
+                "poseEstimateYDeviation": 0.5,
+                "poseEstimateThetaDeviation": 0.26179939
+            },
+            "imageMode": {}
+        }
+    },
+    "globalVariables": {},
+    "userNodes": {},
+    "playbackConfig": {
+        "speed": 1
+    },
+    "layout": {
+        "first": {
+            "first": "3D!33mpyjk",
+            "second": "3D!4azj2ss",
+            "direction": "column"
+        },
+        "second": {
+            "first": "SourceInfo!23x2wre",
+            "second": "RawMessages!1d40esi",
+            "direction": "column"
+        },
+        "direction": "row",
+        "splitPercentage": 74.39314612089481
+    }
+}
