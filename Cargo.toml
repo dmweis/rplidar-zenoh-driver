@@ -37,6 +37,7 @@ prost-types = "0.12.6"
 
 # utilities
 anyhow = "1.0"
+thiserror = "1.0"
 clap = {version = "4.2", features = ["derive"]}
 
 # mcap

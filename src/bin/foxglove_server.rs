@@ -1,13 +1,14 @@
 use clap::Parser;
 use foxglove_ws::{Channel, FoxgloveWebSocket};
 use mcap::records::system_time_to_nanos;
+use prost::Message;
 use prost_reflect::ReflectMessage;
 use std::{net::SocketAddr, sync::Arc, time::SystemTime};
 use tokio::signal;
-use tracing::info;
-use zenoh::{config::Config, prelude::r#async::*};
+use tracing::{error, info};
+use zenoh::{config::Config, prelude::r#async::*, subscriber::FlumeSubscriber};
 
-use rplidar_zenoh_driver::{foxglove, setup_tracing};
+use rplidar_zenoh_driver::{foxglove, setup_tracing, ErrorWrapper};
 
 #[derive(Parser, Debug)]
 #[command()]
@@ -62,7 +63,10 @@ async fn main() -> anyhow::Result<()> {
         info!(connect_endpoints= ?zenoh_config.connect.endpoints, "Configured connect endpoints");
     }
 
-    let zenoh_session = zenoh::open(zenoh_config).res().await.unwrap();
+    let zenoh_session = zenoh::open(zenoh_config)
+        .res()
+        .await
+        .map_err(ErrorWrapper::ZenohError)?;
     let zenoh_session = zenoh_session.into_arc();
     info!("Started zenoh session");
 
@@ -88,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    signal::ctrl_c().await.unwrap();
+    signal::ctrl_c().await?;
     info!("ctrl-c received, exiting");
 
     Ok(())
@@ -101,32 +105,56 @@ async fn start_proto_subscriber(
     protobuf: &dyn ReflectMessage,
 ) -> anyhow::Result<()> {
     info!(topic, "Starting proto subscriber");
-    let zenoh_subscriber = zenoh_session.declare_subscriber(topic).res().await.unwrap();
+    let zenoh_subscriber = zenoh_session
+        .declare_subscriber(topic)
+        .res()
+        .await
+        .map_err(ErrorWrapper::ZenohError)?;
 
     let foxglove_channel = create_publisher_for_protobuf(protobuf, foxglove_server, topic).await?;
 
     tokio::spawn({
         let topic = topic.to_owned();
         async move {
-            let mut message_counter = 0;
             loop {
-                let sample = zenoh_subscriber.recv_async().await.unwrap();
-                message_counter += 1;
-                let now = SystemTime::now();
-                let time_nanos = system_time_to_nanos(&now);
-                let payload: Vec<u8> = sample.value.try_into().unwrap();
-                foxglove_channel.send(time_nanos, &payload).await.unwrap();
-
-                if message_counter % 20 == 0 {
-                    info!(
-                        topic,
-                        message_counter, "{} sent {} messages", topic, message_counter
-                    );
+                if let Err(err) =
+                    zenoh_listener_loop(&topic, &zenoh_subscriber, &foxglove_channel).await
+                {
+                    error!(?topic, ?err, "Zenoh listener failed");
                 }
             }
         }
     });
     Ok(())
+}
+
+async fn zenoh_listener_loop(
+    topic: &str,
+    zenoh_subscriber: &FlumeSubscriber<'_>,
+    foxglove_channel: &Channel,
+) -> anyhow::Result<()> {
+    let mut message_counter = 0;
+    loop {
+        let sample = zenoh_subscriber.recv_async().await?;
+        message_counter += 1;
+        let now = SystemTime::now();
+        let time_nanos = system_time_to_nanos(&now);
+        let payload = if let Ok(blob) = TryInto::<Vec<u8>>::try_into(&sample.value) {
+            blob
+        } else if let Ok(text) = TryInto::<String>::try_into(&sample.value) {
+            text.encode_to_vec()
+        } else {
+            anyhow::bail!("Failed to convert message type");
+        };
+        foxglove_channel.send(time_nanos, &payload).await?;
+
+        if message_counter % 20 == 0 {
+            info!(
+                topic,
+                message_counter, "{} sent {} messages", topic, message_counter
+            );
+        }
+    }
 }
 
 const PROTOBUF_ENCODING: &str = "protobuf";
@@ -158,17 +186,21 @@ async fn start_json_subscriber(
     zenoh_session: Arc<Session>,
     foxglove_server: &FoxgloveWebSocket,
     type_name: &str,
-    json_shcema: &str,
+    json_schema: &str,
     latched: bool,
 ) -> anyhow::Result<()> {
     info!(topic, "Starting json subscriber");
-    let zenoh_subscriber = zenoh_session.declare_subscriber(topic).res().await.unwrap();
+    let zenoh_subscriber = zenoh_session
+        .declare_subscriber(topic)
+        .res()
+        .await
+        .map_err(ErrorWrapper::ZenohError)?;
     let foxglove_channel = foxglove_server
         .create_publisher(
             topic,
             JSON_ENCODING,
             type_name,
-            json_shcema,
+            json_schema,
             Some("jsonschema"),
             latched,
         )

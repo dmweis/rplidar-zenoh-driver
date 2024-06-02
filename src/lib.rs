@@ -29,3 +29,9 @@ pub mod foxglove {
     #![allow(non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/foxglove.rs"));
 }
+
+#[derive(thiserror::Error, Debug)]
+pub enum ErrorWrapper {
+    #[error("Zenoh error {0:?}")]
+    ZenohError(#[from] zenoh::Error),
+}
