@@ -49,7 +49,7 @@ struct Args {
     listen: Vec<zenoh_config::EndPoint>,
 
     /// foxglove bind address
-    #[clap(long, default_value = "127.0.0.1:8765")]
+    #[clap(long, default_value = "0.0.0.0:8765")]
     host: SocketAddr,
 }
 
@@ -68,11 +68,11 @@ async fn main() -> anyhow::Result<()> {
     // configure zenoh
     let mut zenoh_config = Config::default();
     if !args.listen.is_empty() {
-        zenoh_config.listen.endpoints = args.listen.clone();
+        zenoh_config.listen.endpoints.clone_from(&args.listen);
         info!(listen_endpoints= ?zenoh_config.listen.endpoints, "Configured listening endpoints");
     }
     if !args.connect.is_empty() {
-        zenoh_config.connect.endpoints = args.connect.clone();
+        zenoh_config.connect.endpoints.clone_from(&args.connect);
         info!(connect_endpoints= ?zenoh_config.connect.endpoints, "Configured connect endpoints");
     }
 
