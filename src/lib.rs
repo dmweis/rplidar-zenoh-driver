@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use prost_reflect::DescriptorPool;
 use prost_types::Timestamp;
@@ -68,6 +68,34 @@ impl RpLidarProjectedPoint {
         result[12..16].copy_from_slice(&self.angle.to_le_bytes());
         result[16] = self.quality;
         result
+    }
+
+    pub fn from_foxglove_point_cloud(point_cloud: &foxglove::PointCloud) -> Result<Vec<Self>> {
+        let (point_stride, point_cloud_fields) = rp_lidar_projected_point_descriptor();
+
+        assert_eq!(point_cloud.fields, point_cloud_fields);
+
+        let data = &point_cloud.data;
+
+        let expected_len = data.len() as u32 / point_stride;
+
+        let mut parsed_point_cloud = Vec::with_capacity(expected_len as usize);
+
+        for chunk in data.chunks_exact(point_stride as usize) {
+            if chunk.len() != point_stride as usize {
+                anyhow::bail!("chunk size doesn't equal point_stride");
+            }
+            let x = f32::from_le_bytes(chunk[0..4].try_into()?);
+            let y = f32::from_le_bytes(chunk[4..8].try_into()?);
+            let distance = f32::from_le_bytes(chunk[8..12].try_into()?);
+            let angle = f32::from_le_bytes(chunk[12..16].try_into()?);
+            let quality = chunk[16];
+
+            let point = RpLidarProjectedPoint::new(x, y, distance, angle, quality);
+            parsed_point_cloud.push(point);
+        }
+
+        Ok(parsed_point_cloud)
     }
 }
 

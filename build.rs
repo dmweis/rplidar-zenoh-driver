@@ -1,6 +1,8 @@
 extern crate prost_reflect_build;
 
 fn main() {
+    std::env::set_var("PROTOC", protobuf_src::protoc());
+
     let proto_files = get_proto_files("proto/foxglove").unwrap();
 
     prost_reflect_build::Builder::new()

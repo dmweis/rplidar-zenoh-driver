@@ -5,25 +5,25 @@ edition = "2021"
 license = "MIT OR APACHE"
 name = "rplidar-zenoh-driver"
 publish = false
-version = "0.2.0"
+version = "0.2.1"
 
 # Debian package
 [package.metadata.deb]
-assets = [
-  [
-    "target/release/driver",
-    "/usr/bin/rplidar-zenoh-driver",
-    "755",
-  ],
-]
+assets = [["target/release/driver", "/usr/bin/rplidar-zenoh-driver", "755"]]
 maintainer = "David Weis <dweis7@gmail.com>"
 maintainer-scripts = "debian/"
 
 [package.metadata.deb.systemd-units]
 
 [dependencies]
-rplidar_driver = {git = "https://github.com/dmweis/rplidar_driver", branch = "main"}
-tokio = {version = "1", features = ["macros", "rt-multi-thread", "fs", "sync", "signal"]}
+rplidar_driver = { git = "https://github.com/dmweis/rplidar_driver", branch = "main" }
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "sync",
+  "signal",
+] }
 
 # zenoh
 zenoh = "0.11.0"
@@ -31,32 +31,33 @@ zenoh-config = "0.11.0"
 
 # protobuf
 once_cell = "1.17.0"
-prost = "0.12.6"
-prost-reflect = {version = "0.13.1", features = ["derive"]}
-prost-types = "0.12.6"
+prost = "0.13.1"
+prost-reflect = { version = "0.14.0", features = ["derive"] }
+prost-types = "0.13.1"
 
 # utilities
 anyhow = "1.0"
 thiserror = "1.0"
-clap = {version = "4.2", features = ["derive"]}
+clap = { version = "4.2", features = ["derive"] }
 
 # mcap
 mcap = "0.9.0"
 memmap2 = "0.9.4"
 
 # logging
-tracing = {version = "0.1", features = ["log"]}
+tracing = { version = "0.1", features = ["log"] }
 tracing-logfmt = "0.3"
-tracing-subscriber = {version = "0.3", features = [
+tracing-subscriber = { version = "0.3", features = [
   "registry",
   "env-filter",
   "json",
-]}
+] }
 
 # foxglove bridge
-foxglove-ws = {git = "https://github.com/dmweis/foxglove-ws.git", branch = "main"}
+foxglove-ws = { git = "https://github.com/dmweis/foxglove-ws.git", branch = "main" }
 # foxglove-ws = {path = "../foxglove-ws"}
 
 [build-dependencies]
-prost-build = "0.12.6"
-prost-reflect-build = "0.13.0"
+prost-build = "0.13.1"
+prost-reflect-build = "0.14.0"
+protobuf-src = "2.1.0"
