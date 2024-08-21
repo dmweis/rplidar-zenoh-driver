@@ -60,4 +60,3 @@ foxglove-ws = { git = "https://github.com/dmweis/foxglove-ws.git", branch = "mai
 [build-dependencies]
 prost-build = "0.13.1"
 prost-reflect-build = "0.14.0"
-protobuf-src = "2.1.0"

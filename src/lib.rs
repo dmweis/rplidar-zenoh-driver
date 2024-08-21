@@ -144,7 +144,7 @@ pub fn rp_lidar_projected_points_to_foxglove_point_cloud(
     foxglove::PointCloud {
         timestamp: Some(system_time_to_proto_time(timestamp)),
         frame_id: frame_id.to_owned(),
-        pose: Some(pose.clone()),
+        pose: Some(*pose),
         point_stride,
         fields: point_cloud_fields.clone(),
         data: points

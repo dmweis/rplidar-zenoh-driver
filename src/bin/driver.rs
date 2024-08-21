@@ -167,7 +167,7 @@ async fn main() -> anyhow::Result<()> {
         let laser_scan = foxglove::LaserScan {
             timestamp: Some(system_time_to_proto_time(&capture_time)),
             frame_id: args.frame_id.clone(),
-            pose: Some(pose.clone()),
+            pose: Some(pose),
             start_angle: start_angle as f64,
             end_angle: end_angle as f64,
             ranges: scan.iter().map(|point| point.distance() as f64).collect(),

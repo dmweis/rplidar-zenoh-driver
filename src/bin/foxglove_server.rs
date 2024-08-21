@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     setup_tracing()?;
 
     // start foxglove server
-    let server = foxglove_ws::FoxgloveWebSocket::new();
+    let server = foxglove_ws::FoxgloveWebSocket::default();
     tokio::spawn({
         let server = server.clone();
         async move { server.serve(args.host).await }
