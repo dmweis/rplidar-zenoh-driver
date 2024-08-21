@@ -1,0 +1,1 @@
+searchState.loadedDescShard("foxglove_server", 0, "publish topic\nEndpoints to connect to.\nReturns the argument unchanged.\nfoxglove bind address\nCalls <code>U::from(self)</code>.\nEndpoints to listen on.\nlidar prefix\npublish topic")

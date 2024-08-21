@@ -1,0 +1,1 @@
+searchState.loadedDescShard("driver", 0, "publish topic\nconnect to\nframe_id\nReturns the argument unchanged.\nCalls <code>U::from(self)</code>.\nTurn of lidar\nlisten on\nzenoh prefix\npublish topic\nserial port for lidar")

@@ -1,0 +1,1 @@
+searchState.loadedDescShard("mcap_logger", 0, "publish topic\nconnect to\nReturns the argument unchanged.\nCalls <code>U::from(self)</code>.\nlisten on\noutput file\nlidar prefix\npublish topic")

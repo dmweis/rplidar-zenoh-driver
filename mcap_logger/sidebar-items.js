@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PROTOBUF_ENCODING"],"fn":["main","register_mcap_topic_for_protobuf"],"struct":["Args"]};
